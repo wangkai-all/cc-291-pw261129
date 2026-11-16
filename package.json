@@ -1,0 +1,16 @@
+{
+  "name": "tier-control",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Tiered storage control plane with hot flash cache, slow cold service, safe migration, on-demand reheat and verification.",
+  "scripts": {
+    "start": "node scripts/start.js",
+    "dev": "node scripts/start.js",
+    "test": "node --test --test-concurrency=1 test/*.test.js",
+    "reset": "node scripts/reset.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

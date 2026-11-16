@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>分层存储控制台 · 热盘 / 冷分区</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">◧</span>
+      <div>
+        <h1>分层存储控制台</h1>
+        <p class="sub">本地快盘热层 · 可控延迟冷服务 · 迁移 / 回热 / 回收并发安全</p>
+      </div>
+    </div>
+    <div class="top-meta">
+      <span class="pill" id="conn-pill">连接中…</span>
+      <span class="pill muted" id="gen-pill">generation —</span>
+      <button class="btn ghost" id="refresh">刷新</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <main>
+      <section class="cards" id="stats" aria-label="概览"></section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>存储分层</h2>
+          <p class="hint">热层文件按内容寻址；冷层以分区版本保存 manifest 与对象。</p>
+        </div>
+        <div class="tier-grid">
+          <div class="tier hot">
+            <div class="tier-title"><span class="dot"></span>热盘（本地快盘）</div>
+            <div class="usage-bar"><span id="hot-bar"></span></div>
+            <div class="usage-label" id="hot-usage">—</div>
+            <div class="tier-note" id="hot-note">内容寻址文件名：同一份字节可被多个查询安全共享。</div>
+          </div>
+          <div class="tier cold">
+            <div class="tier-title"><span class="dot"></span>冷层（独立慢速服务）</div>
+            <div class="usage-label" id="cold-usage">—</div>
+            <div class="tier-note" id="cold-note">读取受基准延迟与带宽限制，可注入故障。</div>
+          </div>
+        </div>
+        <div class="flow-strip" id="flow-strip" aria-label="并发安全的切换顺序">
+          <span class="flow-step"><b>1</b> 冷版本构建并逐对象校验</span>
+          <span class="flow-arrow">→</span>
+          <span class="flow-step"><b>2</b> 目录登记冷副本（持久化）</span>
+          <span class="flow-arrow">→</span>
+          <span class="flow-step"><b>3</b> 等读者租约排空后删热</span>
+          <span class="flow-arrow">→</span>
+          <span class="flow-step"><b>4</b> 旧冷版本按租约 + 宽限期回收</span>
+        </div>
+        <div class="controls-grid">
+          <label class="field">
+            <span>冷读基准延迟</span>
+            <input type="range" id="latency" min="0" max="1200" step="10" />
+            <output id="latency-out">—</output>
+          </label>
+          <label class="field">
+            <span>冷读带宽</span>
+            <input type="range" id="bandwidth" min="131072" max="8388608" step="131072" />
+            <output id="bandwidth-out">—</output>
+          </label>
+          <label class="field">
+            <span>故障注入</span>
+            <select id="fault">
+              <option value="none">无</option>
+              <option value="error-once">网络中断（一次）</option>
+              <option value="error-always">网络中断（持续）</option>
+              <option value="corrupt-once">字节损坏（一次）</option>
+              <option value="corrupt-always">字节损坏（持续）</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>取消查询后</span>
+            <select id="cancel-policy">
+              <option value="continue">共享任务继续（默认）</option>
+              <option value="cancel-if-idle">无人订阅即中止</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>校验重试次数</span>
+            <input type="number" id="retries" min="0" max="5" step="1" />
+          </label>
+          <label class="field">
+            <span>旧版本宽限期（秒）</span>
+            <input type="number" id="grace" min="0" max="3600" step="5" />
+          </label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>数据集</h2>
+          <div class="head-actions">
+            <input id="ds-name" class="text" placeholder="数据集名称（可选）" maxlength="80" />
+            <label class="inline">文件 <input id="ds-count" type="number" value="6" min="1" max="24" /></label>
+            <label class="inline">每份 MB <input id="ds-size" type="number" value="0.4" min="0.05" max="8" step="0.05" /></label>
+            <button class="btn primary" id="create-ds">新建数据集</button>
+          </div>
+        </div>
+        <div id="datasets" class="datasets"></div>
+      </section>
+
+      <section class="panel" id="retrieval-panel">
+        <div class="panel-head">
+          <h2>共享取回任务</h2>
+          <p class="hint">同一数据集/同一固定版本只会有一个整分区任务；订阅者共享同一份下载。</p>
+        </div>
+        <div id="tasks" class="tasks"></div>
+      </section>
+
+      <section class="panel" id="benchmark-panel">
+        <div class="panel-head">
+          <h2>读取策略对比</h2>
+          <div class="head-actions">
+            <label class="inline">文件 <input id="bench-files" type="number" value="6" min="2" max="12" /></label>
+            <label class="inline">每份 MB <input id="bench-size" type="number" value="0.2" min="0.05" max="2" step="0.05" /></label>
+            <label class="inline">并发 <input id="bench-clients" type="number" value="4" min="1" max="10" /></label>
+            <button class="btn primary" id="bench-run">运行对比</button>
+          </div>
+        </div>
+        <p class="hint">同一份数据的两种冷读策略：按文件读取 vs 整分区回热。首屏 = 第一个查询拿到内容的耗时；流量与缓存占用来自冷服务与热盘实测。</p>
+        <div id="benchmark" class="benchmark"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>冷分区与版本</h2>
+          <div class="head-actions">
+            <button class="btn" id="reclaim-dry">回收预演</button>
+            <button class="btn danger" id="reclaim-run">执行回收</button>
+          </div>
+        </div>
+        <div id="partitions" class="partitions"></div>
+        <div id="reclaim-result" class="reclaim-result hidden"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>事件与校验依据</h2>
+          <div class="head-actions">
+            <button class="btn ghost" id="recover">恢复扫描</button>
+          </div>
+        </div>
+        <div id="events" class="events"></div>
+      </section>
+    </main>
+
+    <aside class="side">
+      <section class="panel sticky">
+        <div class="panel-head">
+          <h2>一致性</h2>
+          <p class="hint">每个文件当前可读位置与校验依据。</p>
+        </div>
+        <div id="consistency" class="consistency"></div>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><h2>操作输出</h2></div>
+        <pre id="log" class="log"></pre>
+      </section>
+    </aside>
+  </div>
+
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
